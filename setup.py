@@ -3,7 +3,7 @@ from setuptools import setup, find_packages
 setup(
     name="visa",
     version="0.0.0",
-    author="Boktiar Ahmed Bappy",
-    author_email="entbappy73@gmail.com",
+    author="Tanmoy Saha",
+    author_email="sahatanmoyofficial@gmail.com",
     packages=find_packages()
 )
