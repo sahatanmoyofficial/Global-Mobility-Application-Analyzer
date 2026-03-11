@@ -37,17 +37,18 @@ The deck covers: business problem → architecture → ML pipeline → model res
 | 1 | [Business Problem](#1-business-problem) |
 | 2 | [Project Overview](#2-project-overview) |
 | 3 | [Tech Stack](#3-tech-stack) |
-| 4 | [Repository Structure](#4-repository-structure) |
-| 5 | [Data & Features](#5-data--features) |
-| 6 | [ML Pipeline — Step by Step](#6-ml-pipeline--step-by-step) |
-| 7 | [Model Performance](#7-model-performance) |
-| 8 | [How to Replicate — Full Setup Guide](#8-how-to-replicate--full-setup-guide) |
-| 9 | [Running the Application](#9-running-the-application) |
-| 10 | [CI/CD & Cloud Deployment](#10-cicd--cloud-deployment) |
-| 11 | [Business Applications & Other Industries](#11-business-applications--other-industries) |
-| 12 | [How to Improve This Project](#12-how-to-improve-this-project) |
-| 13 | [Troubleshooting](#13-troubleshooting) |
-| 14 | [Glossary](#14-glossary) |
+| 4 | [High-Level Architecture](#4-high-level-architecture) |
+| 5 | [Repository Structure](#5-repository-structure) |
+| 6 | [Data & Features](#6-data--features) |
+| 7 | [ML Pipeline — Step by Step](#7-ml-pipeline--step-by-step) |
+| 8 | [Model Performance](#8-model-performance) |
+| 9 | [How to Replicate — Full Setup Guide](#9-how-to-replicate--full-setup-guide) |
+| 10 | [Running the Application](#10-running-the-application) |
+| 11 | [CI/CD & Cloud Deployment](#11-cicd--cloud-deployment) |
+| 12 | [Business Applications & Other Industries](#12-business-applications--other-industries) |
+| 13 | [How to Improve This Project](#13-how-to-improve-this-project) |
+| 14 | [Troubleshooting](#14-troubleshooting) |
+| 15 | [Glossary](#15-glossary) |
 
 ---
 
@@ -124,7 +125,60 @@ This leads to real business pain:
 
 ---
 
-## 4. Repository Structure
+## 4. High-Level Architecture
+
+### System Context
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                         DATA LAYER                              │
+│                                                                 │
+│   [ Kaggle CSV ]  ──►  [ MongoDB Atlas ]                        │
+│                         VISA_APPLICATION_DATA.visa_data         │
+└────────────────────────────┬────────────────────────────────────┘
+                             │
+                             ▼
+┌─────────────────────────────────────────────────────────────────┐
+│                        PIPELINE LAYER                           │
+│                                                                 │
+│  [Ingest]→[Validate]→[Transform]→[Train]→[Evaluate]→[Push]     │
+│      │                                          │               │
+│      ▼                                          ▼               │
+│  artifact/<timestamp>/                    model.pkl → AWS S3   │
+└─────────────────────────────────────────────────────────────────┘
+                             │
+                             ▼
+┌─────────────────────────────────────────────────────────────────┐
+│                        SERVING LAYER                            │
+│                                                                 │
+│  [ FastAPI app.py ]  ◄── loads model.pkl from S3               │
+│        │                                                        │
+│   POST /  (predict)   GET /train  (retrain)                     │
+│        │                                                        │
+│  [ Browser / HTTP Client ]                                      │
+│        ▲                                                        │
+│  [ Docker Container ]  ◄──  [ AWS EC2 ]                        │
+│                                  ▲                              │
+│  [ GitHub Push ] → [ Actions ] → [ ECR ] → [ EC2 Deploy ]      │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+### Data Flow Summary
+
+| # | Stage | What Happens |
+|---|-------|-------------|
+| 1 | **Data Loading** | Raw CSV uploaded to MongoDB Atlas; 25,480 records in collection `visa_data` |
+| 2 | **Ingestion** | Pipeline pulls all records, saves `visa.csv`, splits 80/20 to `train.csv` / `test.csv` |
+| 3 | **Validation** | Column count & type checks; Evidently drift report saved as YAML |
+| 4 | **Transformation** | Feature engineering, encoding, scaling, SMOTEENN; output as `.npy` arrays |
+| 5 | **Training** | `neuro_mf` runs GridSearchCV over KNN + RandomForest; best model saved |
+| 6 | **Evaluation** | New model F1 vs. production F1; accepted if improvement > 0.02 |
+| 7 | **Pushing** | Accepted `model.pkl` uploaded to S3 bucket `visa2026` |
+| 8 | **Serving** | FastAPI loads model from S3; `POST /` returns `Certified` or `Denied` |
+
+---
+
+## 5. Repository Structure
 
 ```
 Global-Mobility-Application-Analyzer/
@@ -176,7 +230,7 @@ Global-Mobility-Application-Analyzer/
 
 ---
 
-## 5. Data & Features
+## 6. Data & Features
 
 ### Dataset
 
@@ -213,7 +267,7 @@ drop_columns: [case_id, yr_of_estab]
 
 ---
 
-## 6. ML Pipeline — Step by Step
+## 7. ML Pipeline — Step by Step
 
 ### Architecture: Config → Component → Artifact
 
@@ -320,7 +374,7 @@ Config Object  ──►  Component  ──►  Artifact Object
 
 ---
 
-## 7. Model Performance
+## 8. Model Performance
 
 | Model | CV Score | F1 | Precision | Recall |
 |-------|----------|-----|-----------|--------|
@@ -340,7 +394,7 @@ Config Object  ──►  Component  ──►  Artifact Object
 
 ---
 
-## 8. How to Replicate — Full Setup Guide
+## 9. How to Replicate — Full Setup Guide
 
 ### Prerequisites
 
@@ -479,7 +533,7 @@ Artifacts are saved to `artifact/<MM_DD_YYYY_HH_MM_SS>/` — one timestamped fol
 
 ---
 
-## 9. Running the Application
+## 10. Running the Application
 
 ### Local (no Docker)
 
@@ -535,7 +589,7 @@ curl -X POST http://localhost:8080/ \
 
 ---
 
-## 10. CI/CD & Cloud Deployment
+## 11. CI/CD & Cloud Deployment
 
 Every push to `main` triggers `.github/workflows/cicd.yaml`:
 
@@ -582,7 +636,7 @@ newgrp docker
 
 ---
 
-## 11. Business Applications & Other Industries
+## 12. Business Applications & Other Industries
 
 ### Immediate Use Cases (Immigration)
 
@@ -610,7 +664,7 @@ The same ML pattern (predicting a multi-factor administrative decision) transfer
 
 ---
 
-## 12. How to Improve This Project
+## 13. How to Improve This Project
 
 ### 🧠 Model & ML Improvements
 
@@ -648,7 +702,7 @@ The same ML pattern (predicting a multi-factor administrative decision) transfer
 
 ---
 
-## 13. Troubleshooting
+## 14. Troubleshooting
 
 | Error / Symptom | Fix |
 |----------------|-----|
@@ -665,7 +719,7 @@ The same ML pattern (predicting a multi-factor administrative decision) transfer
 
 ---
 
-## 14. Glossary
+## 15. Glossary
 
 | Term | Definition |
 |------|-----------|
@@ -705,3 +759,7 @@ This project is licensed under the MIT License — see the [LICENSE](LICENSE) fi
 [linkedin.com/in/sahatanmoyofficial](https://linkedin.com/in/sahatanmoyofficial) | [github.com/sahatanmoyofficial](https://github.com/sahatanmoyofficial)
 
 ---
+
+<div align="center">
+<sub>Built with ❤️ using Python, FastAPI, MongoDB Atlas, AWS, and GitHub Actions</sub>
+</div>
